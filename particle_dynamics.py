@@ -2,16 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 
-x = np.array([0.,0.,1.,2.])
-xg = np.array([1., 1., 1., 1.])
-R = np.diag([1., 1.])
-Q = np.diag([0., 1., 1., 1.])
-Qf = np.diag([1., 1., 0., 1.])
-t = 0.0  #initial_time
-tf = 5.0  #final_time
-dt = .02
-thist = np.array([t])
-xhist = np.array([x])
+t = 0.
+dt = .02 #MUST BE EQUAL TO PARTICLE_COST dt)
+tf = 5.0 #^^
+x0 = np.array([0.,0.,1.,2.])
+us = np.full((int(tf/dt), 2), 1.)
 
 def particle_dynamics(x, u):
     p1 = x[0] #current x pos
@@ -22,26 +17,45 @@ def particle_dynamics(x, u):
     a2 = u[1] #current y accel
     return np.array([v1, v2, a1, a2]) #xdot or resultant
 
+def hist(x0, us, dt, tf):
+    t = 0
+    i = 0
+    thist = np.array([t]) #records time in respect to dt
+    xhist = np.array([x0]) #records all previous positions
+    t += dt
+    while t < tf:
+        x = xhist[-1]
+        x += particle_dynamics(x, us[i])*dt
+        i += 1
+        t += dt
+        thist = np.append(thist, np.array([t]), axis=0)
+        xhist = np.append(xhist, np.array([x]), axis=0)
+    return xhist, thist
+
 def quadratic_cost_for(x, u, Q, R, Qf, dt, xg):
     a = 0
     for i in range(0, np.size(u, 0)):
        a += (np.dot(np.dot(np.transpose(u[i]),R), u[i]) + np.dot(np.dot(np.transpose(x[i]-xg), Q), (x[i]-xg)))*dt
-       a += np.dot(np.dot(np.transpose(x[-1]-xg), Qf), (x[-1]-xg))
+    a += np.dot(np.dot(np.transpose(x[-1]-xg), Qf), (x[-1]-xg))
     return a
 
-u = np.array([t**2-t+1, t**2-t+1])
-uhist = np.array([u])
-t += dt
-while t < tf:
-    x += particle_dynamics(x, u)*dt
-    t += dt
-    thist = np.append(thist, np.array([t]), axis=0)
-    xhist = np.append(xhist, np.array([x]), axis=0)
-    u = np.array([t**2-t+1, t**2-t+1])
-    uhist = np.append(uhist, np.array([u]), axis=0)
+def particle_cost(us):
+    R = np.diag([1., 1.])
+    Q = np.diag([0., 1., 1., 1.])
+    Qf = np.diag([1., 1., 0., 1.])
+    tf = 5.0  #final_time
+    dt = .02
+    xg = np.array([1., 1., 1., 1.])
+    x0 = np.array([0.,0.,1.,2.])
+    
+    xn, tn = hist(x0, us, dt, tf)
+    return quadratic_cost_for(xn, us, Q, R, Qf, dt, xg)
+
+xhist, thist = hist(x0, us, dt, tf)  
 
 #print(np.size(xhist)) check for size of array (1008!?)
-print(quadratic_cost_for(xhist, uhist, Q, R, Qf, dt, xg))
+print(particle_cost(us))
+
 plt.figure()
 plt.plot(xhist[:, 0], xhist[:, 1])
 plt.figure()
