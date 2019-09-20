@@ -51,10 +51,28 @@ def particle_cost(us):
     xn, tn = hist(x0, us, dt, tf)
     return quadratic_cost_for(xn, us, Q, R, Qf, dt, xg)
 
+def CEM(u0, J, E0, L): #L is the maximum iterations done
+    mu = u0
+    sigma = E0
+    for i in range(0, L):
+        us_out = np.random.normal(mu, sigma)
+        n_mu = 0
+        n_sigma = 0
+        print(np.size(us_out,1))
+        for n in range(0, np.size(us_out, 1)):
+            n_mu += (1/(np.size(us_out, 1))) * us_out[:, n]
+        mu = n_mu
+        #for m in range(0, np.size(us_out, 1)):
+            #n_sigma += (1/(np.size(us_out, 1))) * (np.dot((us_out[:, m] - mu), np.transpose(us_out[:, m] - mu)))
+        #sigma = n_sigma
+    return mu
+
 xhist, thist = hist(x0, us, dt, tf)  
+us0 = np.vstack(us)
 
 #print(np.size(xhist)) check for size of array (1008!?)
 print(particle_cost(us))
+print(CEM(us0, particle_cost, 2.0, 2))
 
 plt.figure()
 plt.plot(xhist[:, 0], xhist[:, 1])
