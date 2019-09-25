@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import math
 
 t = 0.
-dt = .02 #MUST BE EQUAL TO PARTICLE_COST dt)
+dt = .02 #MUST BE EQUAL TO PARTICLE_COST dt
 tf = 5.0 #^^
 x0 = np.array([0.,0.,1.,2.])
 us = np.full((int(tf/dt), 2), 1.)
@@ -51,28 +51,32 @@ def particle_cost(us):
     xn, tn = hist(x0, us, dt, tf)
     return quadratic_cost_for(xn, us, Q, R, Qf, dt, xg)
 
-def CEM(u0, J, E0, L): #L is the maximum iterations done
+def costSort(cost):
+    return cost[1]
+
+def CEM(u0, J, E0, L, C): #L is the maximum iterations done and C is samples per iteration
     mu = u0
     sigma = E0
-    for i in range(0, L):
-        us_out = np.random.normal(mu, sigma)
-        n_mu = 0
-        n_sigma = 0
-        print(np.size(us_out,1))
-        for n in range(0, np.size(us_out, 1)):
-            n_mu += (1/(np.size(us_out, 1))) * us_out[:, n]
-        mu = n_mu
-        #for m in range(0, np.size(us_out, 1)):
-            #n_sigma += (1/(np.size(us_out, 1))) * (np.dot((us_out[:, m] - mu), np.transpose(us_out[:, m] - mu)))
-        #sigma = n_sigma
-    return mu
+    for L in range(0, L):
+        costs = np.array()
+        for c in range(0, C):
+            us_out = np.random.multivariate_normal(mu, sigma)
+            us_out = np.reshape(us_out, (np.size(us_out, 0)/2, 2))
+            J_out = particle_cost(us_out)
+            costs = np.append(costs, (us_out, J_out), 0)
+        costs.sort(key = costSort)
+        p = 0.5
+        e_samples = costs[:, p*len(costs)]
+        np.shape(e_samples)
 
 xhist, thist = hist(x0, us, dt, tf)  
-us0 = np.vstack(us)
+us0 = np.concatenate(us,-1)
+sigma0 = np.full((np.size(us), np.size(us)), 0.2)
+print(np.shape(us0))
 
 #print(np.size(xhist)) check for size of array (1008!?)
 print(particle_cost(us))
-print(CEM(us0, particle_cost, 2.0, 2))
+print(CEM(us0, particle_cost, sigma0, 2, 100))
 
 plt.figure()
 plt.plot(xhist[:, 0], xhist[:, 1])
