@@ -6,8 +6,8 @@ import pdb
 t = 0.
 dt = .02 #MUST BE EQUAL TO PARTICLE_COST dt
 tf = 5.0 #^^
-x0 = np.array([0.,0.,1.,2.])
-us = np.full((int(tf/dt), 2), 1.)
+x0 = np.array([0.,0.,0.,0.])
+us = np.zeros((int(tf/dt), 2))
 
 def particle_dynamics(x, u):
     p1 = x[0] #current x pos
@@ -42,12 +42,12 @@ def quadratic_cost_for(x, u, Q, R, Qf, dt, xg):
 
 def particle_cost(us):
     R = np.diag([1., 1.])
-    Q = np.diag([0., 1., 1., 1.])
-    Qf = 10*np.diag([1., 1., 0., 1.])
+    Q = np.diag([1., 1., 1., 1.])
+    Qf = 10*np.diag([1., 1., 1., 1.])
     tf = 5.0  #final_time
     dt = .02
-    xg = np.array([1., 1., 1., 1.])
-    x0 = np.array([0.,0.,1.,2.])
+    xg = np.array([1., 1., 0., 0.])
+    x0 = np.array([0.,0.,0.,0.])
     
     us = np.reshape(us, (us.size/2, 2))
     xn, tn = hist(x0, us, dt, tf)
@@ -80,7 +80,7 @@ print(np.shape(us0))
 
 #print(np.size(xhist)) check for size of array (1008!?)
 print(particle_cost(us))
-mu, sigma = CEM(us0, particle_cost, sigma0, 10, 100, 0.15)
+mu, sigma = CEM(us0, particle_cost, sigma0, 20, 100, 0.15)
 
 us = np.reshape(mu, (int(mu.size/2), 2))
 xhist, thist = hist(x0, us, dt, tf)
