@@ -9,9 +9,13 @@ tf = 5.0 #^^
 us = np.zeros((int(tf/dt), 2))
 R = np.diag([1., 1.])
 Q = np.diag([1., 1., 1., 1.])
-Qf = 10*np.diag([1., 1., 1., 1.])
-xg = np.array([1., 1., 0., 0.])
-x0 = np.array([0.,0.,0.,0.])
+Qf = 10*np.diag([1., 1., 1., 1.]) 
+xg = np.array([1., 1., 0., 0.]) #goal position
+x0 = np.array([0.,0.,0.,0.]) #initial position
+
+L1 = 20 #number of iterations to run
+C1 = 100 #number of samples per iterations
+p1 = 0.15 #percent of samples to keep
 
 def particle_dynamics(x, u):
     p1 = x[0] #current x pos
@@ -44,7 +48,7 @@ def quadratic_cost_for(x, u, Q, R, Qf, dt, xg):
     a += np.dot(np.dot(np.transpose(x[-1]-xg), Qf), (x[-1]-xg))
     return a
 
-def particle_cost(R, Q, Qf, Tf, dt, xg, x0):
+def particle_cost(us, R, Q, Qf, Tf, dt, xg, x0):
     us = np.reshape(us, (us.size/2, 2))
     xn, tn = hist(x0, us, dt, tf)
     return quadratic_cost_for(xn, us, Q, R, Qf, dt, xg)
@@ -59,7 +63,7 @@ def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples 
         state_cost = []
         for c in range(0, C):
             u_out = np.random.multivariate_normal(mu, sigma)
-            J_out = particle_cost(u_out)
+            J_out = J(u_out)
             sample = (u_out, J_out)
             state_cost.append(sample)
         state_cost.sort(key = costSort)
@@ -73,9 +77,8 @@ def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples 
 us0 = np.concatenate(us,-1)
 sigma0 = 10*np.diag(np.ones_like(us0))
 
-cost = lambda us : particle_cost(us, R, Q, Qf, Tf, dt, xg, x0)
-
-mu, sigma = CEM(us0, cost, sigma0, 20, 100, 0.15)
+cost = lambda us : particle_cost(us, R, Q, Qf, tf, dt, xg, x0)
+mu, sigma = CEM(us0, cost, sigma0, L1, C1, p1)
 
 us = np.reshape(mu, (int(mu.size/2), 2))
 xhist, thist = hist(x0, us, dt, tf)
