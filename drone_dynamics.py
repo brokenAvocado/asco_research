@@ -10,9 +10,8 @@ g = 9.81
 dt = 0.05
 tfinal = 10
 
-x0 = tf.constant([1., 1., 1., 1., 1., 1.]) #posx, posy, angle, velox, veloy, angVel
-u0 = tf.zeros((int(tfinal/dt), 2), tf.float32) #thrust 1 and thrust 2
-u = tf.placeholder(tf.float32, shape = (int(tfinal/dt)))
+x0 = np.array([1., 1., 1., 1., 1., 1.]) #posx, posy, angle, velox, veloy, angVel
+u0 = np.zeros((int(tfinal/dt), 2)) #thrust 1 and thrust 2
 R = tf.linalg.diag([1., 1., 1.])
 Q = tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 Qf = 10*tf.linalg.diag([1., 1., 1., 1., 1., 1.])
@@ -41,7 +40,8 @@ def hist(x0, us, dt, tf):
         xhist.append(x)
     return xhist, thist
 
-def quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tf):
+def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tf):
+    u = tf.placeholder(tf.float32, shape = [us.shape[0], C])
     u = tf.reshape(u, [int(u.size()/2), 2])
     xn, tn = hist(x0, u, dt, tf)
     cost = 0
@@ -56,13 +56,12 @@ def costSort(cost):
 def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples per iteration
     mu = u0
     sigma = E0
+    sess = tf.Session()
     for l in range(0, L):
         state_cost = []
-        u_out = np.random.multivariate_normal(mu, sigma, (u0.shape[0], C))
-        J_out = J(u_out)
-        sample = (u_out, J_out)
-        state_cost.append(sample)
-        state_cost.sort(key = costSort)
+        u_out = np.random.multivariate_normal(mu, sigma, size = C)
+        J_out = sess.run(J, feed_dict = {u: u_out.T})
+        print(J_out.shape)
         e_samples = np.array([sc[0] for sc in state_cost[:int(p*len(state_cost))]])
         costs = np.array([sc[1] for sc in state_cost])
         print(np.mean(costs))
@@ -70,11 +69,10 @@ def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples 
         sigma = np.cov(e_samples.T)
     return mu, sigma
 
-ur0 = tf.reshape(u0, [int(tfinal/dt), 1])
-sigma0 = 10 * tf.linalg.diag(tf.ones_like(ur0))
+ur0 = np.reshape(u0, [-1])
+sigma0 = 10*np.diag(np.ones_like(ur0))
 cost = lambda us : quadratic_cost_for(us, R, Q, Qf, tf, dt, xg, x0)
-sess = tf.Session()
-mu, sigma = sess.run(CEM(u, cost, sigma0, L1, C1, p1), feed_dict = {u: ur0})
+CEM(ur0, cost, sigma0, L1, C1, p1)
 
 us = tf.reshape(mu, [int(mu.size/2), 2])
 xhist, thist = hist(x0, us, dt, tf)
