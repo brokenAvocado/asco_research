@@ -10,7 +10,7 @@ g = 9.81
 dt = 0.05
 tfinal = 10
 L1 = 10
-C1 = 100
+C1 = 1
 p1 = .12
 
 x0 = np.array([1., 1., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
@@ -117,16 +117,20 @@ ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None))
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
+'''
 cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal)
 mu, sigma = CEM(ur0, cost, sigma0, L1, C1, p1)
+'''
 
-'''xtest = tf.constant([1., 1., 0., 0., 0., 0.], dtype = tf.float64)
+xtest = tf.constant([1., 1., 0., 0., 0., 0.], dtype = tf.float32)
 print(np.mean(quadratic_cost_for(x0, xtest, ur0, Q, Qf, R, dt, tfinal)))
+
 '''
 us = np.reshape(mu, [int(mu.size/2), 2])
 #print("us = ", us.shape)
 xhist, thist = graph_hist(x0, us, dt, tfinal)
 #print(xhist)
+
 
 plt.figure()
 plt.xlabel('X')
@@ -141,7 +145,6 @@ plt.title('Velocity over Time')
 plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
 plt.show()
 
-'''
 plt.figure()
 plt.xlabel('Time')
 plt.ylabel('Thrust')
