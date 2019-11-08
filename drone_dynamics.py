@@ -9,16 +9,16 @@ l = 10. #length
 g = 9.81
 dt = 0.05
 tfinal = 10.
-L1 = 100
+L1 = 50
 C1 = 100
 p1 = .12
 
-x0 = np.array([1., 1., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
+x0 = np.array([1., 1., 0., 2., 2., 0.]) #posx, posy, angle, velox, veloy, angVel
 u0 = (m*g / 2.) * np.ones((int(tfinal/dt), 2)) #thrust 1 and thrust 2
 R = .01 * tf.linalg.diag([1., 1.])
 Q = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
-Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
-xg = tf.constant([0., 0., 0., 0., 0., 0.]) #goal position
+Qf = 10 * tf.linalg.diag([0., 0., 1., 1., 1., 1.])
+xg = tf.constant([0., 0., 0., 2., 2., 0.]) #goal position
 
 def deriv(xs, us):
     Ft = us[0] + us[1]
@@ -61,7 +61,7 @@ def graph_hist(x0, us, dt, tfinal): #for plotting
         x = np.add(x, np.multiply(graph_deriv(x, us[i]), dt))
         i += 1
         t += dt
-        thist = np.append(thist, np.array([t]), axis=-1)
+        thist = np.append(thist, np.array([t]), axis=0)
         xhist = np.append(xhist, np.array([x]), axis=0)
     return xhist, thist
 
@@ -150,7 +150,8 @@ plt.figure()
 plt.xlabel('Time')
 plt.ylabel('Velocity')
 plt.title('Velocity over Time')
-plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
+#plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
+plt.plot(thist[:], xhist[:, 4])
 plt.show()
 
 plt.figure()
