@@ -5,7 +5,7 @@ import math
 import pdb
 
 m = 10. #mass of drone
-l = 10. #length of drone
+l = 10. #length
 g = 9.81
 dt = 0.05
 tfinal = 10.
