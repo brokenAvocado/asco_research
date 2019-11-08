@@ -10,10 +10,10 @@ us = np.zeros((int(tf/dt), 2))
 R = np.diag([1., 1.])
 Q = np.diag([1., 1., 1., 1.])
 Qf = 10*np.diag([1., 1., 1., 1.]) 
-xg = np.array([1., 1., 0., 0.]) #goal position
-x0 = np.array([0.,0.,0.,0.]) #initial position
+xg = np.array([4., 4., 0., 0.]) #goal position
+x0 = np.array([2., 2.,0.,0.]) #initial position
 
-L1 = 20 #number of iterations to run
+L1 = 10 #number of iterations to run
 C1 = 100 #number of samples per iterations
 p1 = 0.15 #percent of samples to keep
 
@@ -49,7 +49,7 @@ def quadratic_cost_for(x, u, Q, R, Qf, dt, xg):
     return a
 
 def particle_cost(us, R, Q, Qf, Tf, dt, xg, x0):
-    us = np.reshape(us, (us.size/2, 2))
+    us = np.reshape(us, (int(us.size/2), 2))
     xn, tn = hist(x0, us, dt, tf)
     return quadratic_cost_for(xn, us, Q, R, Qf, dt, xg)
 
@@ -75,6 +75,7 @@ def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples 
     return mu, sigma
                 
 us0 = np.concatenate(us,-1)
+print(us0.shape)
 sigma0 = 10*np.diag(np.ones_like(us0))
 
 cost = lambda us : particle_cost(us, R, Q, Qf, tf, dt, xg, x0)
