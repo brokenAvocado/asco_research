@@ -9,7 +9,7 @@ l = 10. #length
 g = 9.81
 dt = 0.05
 tfinal = 10.
-L1 = 100
+L1 = 10
 C1 = 100
 p1 = .12
 
@@ -18,7 +18,7 @@ u0 = (m*g / 2.) * np.ones((int(tfinal/dt), 2)) #thrust 1 and thrust 2
 R = .01 * tf.linalg.diag([1., 1.])
 Q = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
-xg = tf.constant([0., 0., 0., 0., 0., 0.]) #goal position
+xg = tf.constant([3., 3., 0., 0., 0., 0.]) #goal position
 
 def deriv(xs, us):
     Ft = us[0] + us[1]
@@ -37,7 +37,7 @@ def graph_deriv(xs, us):
 def hist(x0, us, dt, tfinal): #for tensor
     t = 0.
     i = 0
-    xhist = tf.constant(x0, shape=[1, 6, C1], dtype = tf.float32)
+    xhist = tf.cast(tf.tile(tf.expand_dims(tf.expand_dims(x0, 0), 2), [1, 1, tf.shape(us)[2]]), tf.float32)
     thist = tf.constant([t], dtype = tf.float64)
     t += dt
     while t < tfinal:
@@ -67,24 +67,16 @@ def graph_hist(x0, us, dt, tfinal): #for plotting
 
 def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal): 
     xg = tf.expand_dims(xg, 0)
-    u = tf.reshape(us, [int(int(us.shape[0])/2), 2, C1]) #reintroduce the thrusts from vectorized
+    u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
     xn, tn = hist(x0, u, dt, tfinal)
-    '''
-    print('xg = ', xg)
-    print('u = ', u)
-    print('xn = ', xn)
-    print('tn = ', tn)'''
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
 
     Q, Qf, R = map(lambda x: tf.tile(tf.expand_dims(x, 0), [C1, 1, 1]), [Q, Qf, R])
-    '''
-    print('Q = ', Q)
-    print('Qf = ', Qf)
-    print('R = ', R)'''
 
     state_mul = tf.matrix_diag_part(tf.matmul(tf.matmul(u, R), tf.transpose(u, perm = [0, 2, 1])))
+    
     pos_mul = tf.matrix_diag_part(tf.matmul(tf.matmul((xn - xg), Q), tf.transpose((xn - xg), perm = [0, 2, 1])))
     mul_sum = tf.reduce_sum(state_mul + pos_mul, 1, True) * dt
 
@@ -94,15 +86,14 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal):
     
     cost = mul_sum + termf
     cost = tf.transpose(cost, perm = [1, 2, 0])
-    return cost 
+    return cost
 
 def costSort(cost):
     return sample[1]
 
-def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples per iteration
+def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples per iteration
     mu = u0
     sigma = E0
-    sess = tf.Session()
     for l in range(0, L):
         u_out = np.random.multivariate_normal(mu, sigma, size = C).T
         J_out = sess.run(J, feed_dict = {u: u_out})
@@ -123,22 +114,18 @@ def CEM(u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples 
         #print(sigma.shape)
     return mu, sigma
     
+sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
 cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal)
-mu, sigma = CEM(ur0, cost, sigma0, L1, C1, p1)
-'''
-sess = tf.Session()
-cost = sess.run(cost, feed_dict = {u: ur0})
-print(np.mean(cost))
-'''
+mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
 
 us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
-#print("us = ", us.shape)
-xhist, thist = graph_hist(x0, us, dt, tfinal)
-print(xhist)
+_, thist = graph_hist(x0, us, dt, tfinal)
+tf_xhist, tf_thist = hist(x0, us[:, :, np.newaxis], dt, tfinal)
+xhist = sess.run(tf_xhist)
 
 plt.figure()
 plt.xlabel('X')
