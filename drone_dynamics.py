@@ -61,7 +61,7 @@ def graph_hist(x0, us, dt, tfinal): #for plotting
         x = np.add(x, np.multiply(graph_deriv(x, us[i]), dt))
         i += 1
         t += dt
-        thist = np.append(thist, np.array([t]), axis=-1)
+        thist = np.append(thist, np.array([t]), axis=0)
         xhist = np.append(xhist, np.array([x]), axis=0)
     return xhist, thist
 
@@ -137,7 +137,8 @@ plt.figure()
 plt.xlabel('Time')
 plt.ylabel('Velocity')
 plt.title('Velocity over Time')
-plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
+#plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
+plt.plot(thist[:], xhist[:, 4])
 plt.show()
 
 plt.figure()
