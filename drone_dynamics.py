@@ -9,16 +9,19 @@ l = 10. #length
 g = 9.81
 dt = 0.05
 tfinal = 10.
-L1 = 10
+L1 = 100
 C1 = 100
 p1 = .12
 
-x0 = np.array([1., 1., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
+x0 = np.array([10., 5., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
 u0 = (m*g / 2.) * np.ones((int(tfinal/dt), 2)) #thrust 1 and thrust 2
 R = .01 * tf.linalg.diag([1., 1.])
 Q = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
-xg = tf.constant([3., 3., 0., 0., 0., 0.]) #goal position
+xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
+
+os0 = tf.constant([[4., 5.], [2., -1.]]) #obstacles
+r = 4 #radius
 
 def deriv(xs, us):
     Ft = us[0] + us[1]
@@ -65,7 +68,7 @@ def graph_hist(x0, us, dt, tfinal): #for plotting
         xhist = np.append(xhist, np.array([x]), axis=0)
     return xhist, thist
 
-def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal): 
+def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam): 
     xg = tf.expand_dims(xg, 0)
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
@@ -86,7 +89,16 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal):
     
     cost = mul_sum + termf
     cost = tf.transpose(cost, perm = [1, 2, 0])
+    cost += lam*constraint(xn, os0, r)
     return cost
+
+def constraint(xs, os, r): #finds the penalty based on the radius minus distance from object pos to center of obstacle
+    penalty = 0
+    for n in range(0, int(os.shape[0])):
+        cval = r - tf.norm(xs[:, :2, :] - tf.expand_dims(tf.expand_dims(os[n, :], 0), 2), axis = 1, keep_dims = True)
+        cval = tf.cast(cval >= 0, cval.dtype) * cval
+        penalty += cval
+    return tf.reduce_sum(penalty, 0, True)
 
 def costSort(cost):
     return sample[1]
@@ -94,9 +106,11 @@ def costSort(cost):
 def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples per iteration
     mu = u0
     sigma = E0
+    lam0 = 2
     for l in range(0, L):
+        lam0 = lam0 ** l
         u_out = np.random.multivariate_normal(mu, sigma, size = C).T
-        J_out = sess.run(J, feed_dict = {u: u_out})
+        J_out = sess.run(J, feed_dict = {u: u_out, lam: lam0})
         print(np.mean(J_out))
         u_out = np.reshape(u_out, [int(np.size(u0)/2), 2, C])
         J_out = np.repeat(J_out, np.size(u_out, 0), 0)
@@ -117,9 +131,11 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
 sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
+xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
+lam = tf.placeholder(tf.float32)
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
-cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal)
+cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam)
 mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
 
 us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
