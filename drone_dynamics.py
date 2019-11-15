@@ -9,7 +9,7 @@ l = 10. #length
 g = 9.81
 dt = 0.05
 tfinal = 10.
-L1 = 100
+L1 = 50
 C1 = 100
 p1 = .12
 
@@ -20,8 +20,8 @@ Q = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 
-os0 = tf.constant([[4., 5.], [2., -1.]]) #obstacles
-r = 4 #radius
+os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
+r = 1 #radius
 
 def deriv(xs, us):
     Ft = us[0] + us[1]
@@ -76,7 +76,7 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam):
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
 
-    Q, Qf, R = map(lambda x: tf.tile(tf.expand_dims(x, 0), [C1, 1, 1]), [Q, Qf, R])
+    Q, Qf, R = map(lambda x: tf.tile(tf.expand_dims(x, 0), [tf.shape(us)[1], 1, 1]), [Q, Qf, R])
 
     state_mul = tf.matrix_diag_part(tf.matmul(tf.matmul(u, R), tf.transpose(u, perm = [0, 2, 1])))
     
@@ -88,14 +88,18 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam):
     termf = tf.matmul(tf.matmul((xf - xg), Qf), tf.transpose((xf - xg), perm = [0, 2, 1]))
     
     cost = mul_sum + termf
-    cost = tf.transpose(cost, perm = [1, 2, 0])
-    cost += lam*constraint(xn, os0, r)
-    return cost
+    costraw = tf.transpose(cost, perm = [1, 2, 0])
+    xn = tf.transpose(xn, perm = [1, 2, 0])
+    constr = lam*constraint(xn, os0, r)
+    return costraw + constr, costraw, constr/lam
 
 def constraint(xs, os, r): #finds the penalty based on the radius minus distance from object pos to center of obstacle
     penalty = 0
     for n in range(0, int(os.shape[0])):
+        #print(xs.shape)
+        #print(xs[:, :2, :])
         cval = r - tf.norm(xs[:, :2, :] - tf.expand_dims(tf.expand_dims(os[n, :], 0), 2), axis = 1, keep_dims = True)
+        #print(cval.shape)
         cval = tf.cast(cval >= 0, cval.dtype) * cval
         penalty += cval
     return tf.reduce_sum(penalty, 0, True)
@@ -106,12 +110,13 @@ def costSort(cost):
 def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is samples per iteration
     mu = u0
     sigma = E0
-    lam0 = 2
     for l in range(0, L):
-        lam0 = lam0 ** l
         u_out = np.random.multivariate_normal(mu, sigma, size = C).T
-        J_out = sess.run(J, feed_dict = {u: u_out, lam: lam0})
-        print(np.mean(J_out))
+        print(u_out.shape)
+        J_out, costraw, constr = sess.run(J, feed_dict = {u: u_out})
+        print("J_out cost: ", np.mean(J_out))
+        print("J_out raw cost: ", np.mean(costraw))
+        print("J_out constraint w/o lambda: ", np.mean(constr))
         u_out = np.reshape(u_out, [int(np.size(u0)/2), 2, C])
         J_out = np.repeat(J_out, np.size(u_out, 0), 0)
         
@@ -122,6 +127,10 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         e_samples = cost[:, :, :int(C*p)] #test this, might be wrong
         #print("elite = ", e_samples.shape)
         mu = np.reshape(np.mean(e_samples, axis = 2), [-1])
+        J_out, costraw, constr = sess.run(J, feed_dict = {u: np.reshape(mu, [mu.size, 1])})
+        print("mu cost: ", np.mean(J_out))
+        print("mu raw cost: ", np.mean(costraw))
+        print("mu constraint w/o lambda: ", np.mean(constr))
         e_samples = np.reshape(e_samples, (np.size(e_samples, axis = 0) * np.size(e_samples, axis = 1), np.size(e_samples, axis = 2)))
         #print(e_samples.shape)
         sigma = np.cov(e_samples) + 0.01 * np.diag(np.ones_like(mu)) 
@@ -132,22 +141,44 @@ sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
 xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
-lam = tf.placeholder(tf.float32)
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
+lam0 = 10.0
+lam = tf.Variable(10.0)
+sess.run(lam.initializer)
 cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam)
-mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
+for o in range(0, 10):
+    sess.run(lam.assign(10.0**o))
+    print("lambda: ", sess.run(lam))
+    mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
+    ur0 = np.reshape(mu, [-1])
+    sigma0 = sigma
+    print()
 
 us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
 _, thist = graph_hist(x0, us, dt, tfinal)
 tf_xhist, tf_thist = hist(x0, us[:, :, np.newaxis], dt, tfinal)
 xhist = sess.run(tf_xhist)
 
+os0 = np.array(sess.run(os0)) #obstacles
+
 plt.figure()
 plt.xlabel('X')
 plt.ylabel('Y')
 plt.title('Position')
 plt.plot(xhist[:, 0], xhist[:, 1]) #position graph
+ax = plt.gca()
+for f in range(0, int(os0.shape[0])):
+    ax.add_patch(plt.Circle(os0[f], r, color = 'r'))
+
+'''
+obs1 = plt.Circle(os0[0], r, color = 'r')
+obs2 = plt.Circle(os0[1], r, color = 'blue')
+obs3 = plt.Circle(os0[2], r, color = 'green')
+
+ax = plt.gca()
+ax.add_patch(obs1)
+ax.add_patch(obs2)'''
 
 plt.figure()
 plt.xlabel('Time')
@@ -155,7 +186,6 @@ plt.ylabel('Velocity')
 plt.title('Velocity over Time')
 #plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
 plt.plot(thist[:], xhist[:, 4])
-plt.show()
 
 plt.figure()
 plt.xlabel('Time')
@@ -164,4 +194,3 @@ plt.title('Thrust over Time')
 plt.plot(thist[:], us[:, 0]) #thrust 1
 plt.plot(thist[:], us[:, 1]) #thrust 2
 plt.show()
-
