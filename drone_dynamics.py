@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 import pdb
+import time
 
 m = 10. #mass of drone
 l = 10. #length
@@ -23,11 +24,14 @@ xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
 
-def deriv(xs, us):
+tstart = time.perf_counter()
+
+def deriv(xs, us, w):
     Ft = us[0] + us[1]
     vxdot = Ft * tf.sin(xs[2]) / m
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
+    noise = w * tf.math.sqrt(xs[3]**2 + xs[4]**2)
     return xs[3], xs[4], xs[5], vxdot, vydot, wdot
 
 def graph_deriv(xs, us):
@@ -37,7 +41,7 @@ def graph_deriv(xs, us):
     wdot = 2*(us[0]-us[1])/(m * l)
     return xs[3], xs[4], xs[5], vxdot, vydot, wdot
 
-def hist(x0, us, dt, tfinal): #for tensor
+def hist(x0, us, dt, tfinal, w): #for tensor
     t = 0.
     i = 0
     xhist = tf.cast(tf.tile(tf.expand_dims(tf.expand_dims(x0, 0), 2), [1, 1, tf.shape(us)[2]]), tf.float32)
@@ -45,7 +49,7 @@ def hist(x0, us, dt, tfinal): #for tensor
     t += dt
     while t < tfinal:
         x = xhist[-1, :, :]
-        x += tf.stack(deriv(x, us[i, :, :]), 0) * dt
+        x += tf.stack(deriv(x, us[i, :, :], w), 0) * dt
         i += 1
         t += dt
         thist = tf.concat([thist, [t]], 0)
@@ -53,7 +57,7 @@ def hist(x0, us, dt, tfinal): #for tensor
         xhist = tf.concat([xhist, x], 0)
     return xhist, thist
 
-def graph_hist(x0, us, dt, tfinal): #for plotting
+def graph_hist(x0, us, dt, tfinal, w): #for plotting
     t = 0.
     i = 0
     thist = np.array([t]) #records time in respect to dt
@@ -68,11 +72,12 @@ def graph_hist(x0, us, dt, tfinal): #for plotting
         xhist = np.append(xhist, np.array([x]), axis=0)
     return xhist, thist
 
-def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam): 
+def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam, w): 
     xg = tf.expand_dims(xg, 0)
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
-    xn, tn = hist(x0, u, dt, tfinal)
+    w0 = np.random.multivariate_normal(np.zeros(int(tfinal/dt)), np.identity(int(tfinal/dt))) #noise
+    xn, tn = hist(x0, u, dt, tfinal, w0)
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
 
@@ -112,11 +117,11 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
     sigma = E0
     for l in range(0, L):
         u_out = np.random.multivariate_normal(mu, sigma, size = C).T
-        print(u_out.shape)
+        #print(u_out.shape)
         J_out, costraw, constr = sess.run(J, feed_dict = {u: u_out})
-        print("J_out cost: ", np.mean(J_out))
+        '''print("J_out cost: ", np.mean(J_out))
         print("J_out raw cost: ", np.mean(costraw))
-        print("J_out constraint w/o lambda: ", np.mean(constr))
+        print("J_out constraint w/o lambda: ", np.mean(constr))'''
         u_out = np.reshape(u_out, [int(np.size(u0)/2), 2, C])
         J_out = np.repeat(J_out, np.size(u_out, 0), 0)
         
@@ -128,9 +133,9 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         #print("elite = ", e_samples.shape)
         mu = np.reshape(np.mean(e_samples, axis = 2), [-1])
         J_out, costraw, constr = sess.run(J, feed_dict = {u: np.reshape(mu, [mu.size, 1])})
-        print("mu cost: ", np.mean(J_out))
+        '''print("mu cost: ", np.mean(J_out))
         print("mu raw cost: ", np.mean(costraw))
-        print("mu constraint w/o lambda: ", np.mean(constr))
+        print("mu constraint w/o lambda: ", np.mean(constr))'''
         e_samples = np.reshape(e_samples, (np.size(e_samples, axis = 0) * np.size(e_samples, axis = 1), np.size(e_samples, axis = 2)))
         #print(e_samples.shape)
         sigma = np.cov(e_samples) + 0.01 * np.diag(np.ones_like(mu)) 
@@ -144,21 +149,21 @@ xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
 lam0 = 10.0
-lam = tf.Variable(10.0)
+lam = tf.Variable(lam0)
 sess.run(lam.initializer)
-cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam)
-for o in range(0, 10):
+cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam, w0)
+for o in range(0, 1):
     sess.run(lam.assign(10.0**o))
-    print("lambda: ", sess.run(lam))
+    #print("lambda: ", sess.run(lam))
     mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
     ur0 = np.reshape(mu, [-1])
     sigma0 = sigma
-    print()
+    #print()
 
+tstop = time.perf_counter()
+print(tstop - tstart, "sec.")
 us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
-_, thist = graph_hist(x0, us, dt, tfinal)
-tf_xhist, tf_thist = hist(x0, us[:, :, np.newaxis], dt, tfinal)
-xhist = sess.run(tf_xhist)
+xhist, thist = graph_hist(x0, us, dt, tfinal, w0)
 
 os0 = np.array(sess.run(os0)) #obstacles
 
@@ -170,15 +175,6 @@ plt.plot(xhist[:, 0], xhist[:, 1]) #position graph
 ax = plt.gca()
 for f in range(0, int(os0.shape[0])):
     ax.add_patch(plt.Circle(os0[f], r, color = 'r'))
-
-'''
-obs1 = plt.Circle(os0[0], r, color = 'r')
-obs2 = plt.Circle(os0[1], r, color = 'blue')
-obs3 = plt.Circle(os0[2], r, color = 'green')
-
-ax = plt.gca()
-ax.add_patch(obs1)
-ax.add_patch(obs2)'''
 
 plt.figure()
 plt.xlabel('Time')
