@@ -23,6 +23,8 @@ xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 
 os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
+w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = C1) #noisei
+w = np.reshape(w, (C1, int(tfinal/dt), x0.shape[0]))
 
 tstart = time.perf_counter()
 
@@ -31,8 +33,8 @@ def deriv(xs, us, w):
     vxdot = Ft * tf.sin(xs[2]) / m
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
-    noise = w * tf.math.sqrt(xs[3]**2 + xs[4]**2)
-    return xs[3], xs[4], xs[5], vxdot, vydot, wdot
+    noise = tf.cast(tf.reshape(tf.sqrt(xs[3]**2 + xs[4]**2), (w.shape[0], int(xs.shape[0]), int(xs.shape[0]))), tf.float32)
+    return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.reshape(tf.matmul(noise, tf.transpose(tf.expand_dims(w, 1), perm = [0, 2, 1])), (int(xs.shape[0]), w.shape[0]))
 
 def graph_deriv(xs, us):
     Ft = us[0] + us[1]
@@ -45,11 +47,13 @@ def hist(x0, us, dt, tfinal, w): #for tensor
     t = 0.
     i = 0
     xhist = tf.cast(tf.tile(tf.expand_dims(tf.expand_dims(x0, 0), 2), [1, 1, tf.shape(us)[2]]), tf.float32)
+    print(xhist.shape)
     thist = tf.constant([t], dtype = tf.float64)
     t += dt
     while t < tfinal:
         x = xhist[-1, :, :]
-        x += tf.stack(deriv(x, us[i, :, :], w), 0) * dt
+        x += tf.stack(deriv(x, us[i, :, :], w[:, i, :]), 0) * dt
+        print(x.shape)
         i += 1
         t += dt
         thist = tf.concat([thist, [t]], 0)
@@ -76,8 +80,7 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam, w):
     xg = tf.expand_dims(xg, 0)
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
-    w0 = np.random.multivariate_normal(np.zeros(int(tfinal/dt)), np.identity(int(tfinal/dt))) #noise
-    xn, tn = hist(x0, u, dt, tfinal, w0)
+    xn, tn = hist(x0, u, dt, tfinal, w)
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
 
@@ -132,7 +135,7 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         e_samples = cost[:, :, :int(C*p)] #test this, might be wrong
         #print("elite = ", e_samples.shape)
         mu = np.reshape(np.mean(e_samples, axis = 2), [-1])
-        J_out, costraw, constr = sess.run(J, feed_dict = {u: np.reshape(mu, [mu.size, 1])})
+        #J_out, costraw, constr = sess.run(J, feed_dict = {u: np.reshape(mu, [mu.size, 1])})
         '''print("mu cost: ", np.mean(J_out))
         print("mu raw cost: ", np.mean(costraw))
         print("mu constraint w/o lambda: ", np.mean(constr))'''
@@ -145,13 +148,13 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
 sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
-xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
+#xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
 lam0 = 10.0
 lam = tf.Variable(lam0)
 sess.run(lam.initializer)
-cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam, w0)
+cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam, w)
 for o in range(0, 1):
     sess.run(lam.assign(10.0**o))
     #print("lambda: ", sess.run(lam))
@@ -163,7 +166,7 @@ for o in range(0, 1):
 tstop = time.perf_counter()
 print(tstop - tstart, "sec.")
 us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
-xhist, thist = graph_hist(x0, us, dt, tfinal, w0)
+xhist, thist = graph_hist(x0, us, dt, tfinal)
 
 os0 = np.array(sess.run(os0)) #obstacles
 
