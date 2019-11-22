@@ -8,9 +8,9 @@ dt = .02 #MUST BE EQUAL TO PARTICLE_COST dt
 tf = 5.0 #^^
 us = np.zeros((int(tf/dt), 2))
 R = np.diag([1., 1.])
-Q = np.diag([1., 1., 1., 1.])
+Q = 10*np.diag([1., 1., 1., 1.])
 Qf = 10*np.diag([1., 1., 1., 1.]) 
-xg = np.array([4., 4., 0., 0.]) #goal position
+xg = np.array([5., 5., 0., 0.]) #goal position
 x0 = np.array([2., 2.,0.,0.]) #initial position
 
 L1 = 10 #number of iterations to run
