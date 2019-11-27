@@ -33,7 +33,8 @@ def deriv(xs, us, w):
     vxdot = Ft * tf.sin(xs[2]) / m
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
-    noise = tf.cast(tf.reshape(tf.tile(tf.sqrt(xs[3]**2 + xs[4]**2)*.0001, [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0]))), tf.float32)
+    noiseFx = tf.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
+    noise = tf.cast(tf.reshape(tf.tile(noiseFx, [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0]))), tf.float32)
     return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.reshape(tf.matmul(noise, tf.transpose(tf.expand_dims(w, 1), perm = [0, 2, 1])), (int(xs.shape[0]), w.shape[0]))
 
 def graph_deriv(xs, us, w):
@@ -41,7 +42,8 @@ def graph_deriv(xs, us, w):
     vxdot = Ft * math.sin(xs[2]) / m
     vydot = (Ft * math.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
-    noise = np.reshape(np.repeat(np.sqrt(xs[3]**2 + xs[4]**2)*.0001, int(xs.shape[0])**2), (int(xs.shape[0]), int(xs.shape[0])))
+    noiseFx = np.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
+    noise = np.reshape(np.repeat(noiseFx ,int(xs.shape[0])**2), (int(xs.shape[0]), int(xs.shape[0])))
     return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + np.matmul(noise, w.T)
 
 def hist(x0, us, dt, tfinal, w): #for tensor
@@ -158,11 +160,11 @@ sess.run(lam.initializer)
 cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam, w)
 for o in range(0, 10):
     sess.run(lam.assign(10.0**o))
-    #print("lambda: ", sess.run(lam))
+    print("lambda: ", sess.run(lam))
     mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
     ur0 = np.reshape(mu, [-1])
     sigma0 = sigma
-    #print()
+    print()
 
 tstop = time.perf_counter()
 print(tstop - tstart, "sec.")
