@@ -23,9 +23,9 @@ xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 
 os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
-w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = C1) #noisei
+w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = C1) #noise
 w = np.reshape(w, (C1, int(tfinal/dt), x0.shape[0]))
-
+print(w.shape)
 tstart = time.perf_counter()
 
 def deriv(xs, us, w):
@@ -33,15 +33,16 @@ def deriv(xs, us, w):
     vxdot = Ft * tf.sin(xs[2]) / m
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
-    noise = tf.cast(tf.reshape(tf.sqrt(xs[3]**2 + xs[4]**2), (w.shape[0], int(xs.shape[0]), int(xs.shape[0]))), tf.float32)
+    noise = tf.cast(tf.reshape(tf.tile(tf.sqrt(xs[3]**2 + xs[4]**2), [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0]))), tf.float32)
     return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.reshape(tf.matmul(noise, tf.transpose(tf.expand_dims(w, 1), perm = [0, 2, 1])), (int(xs.shape[0]), w.shape[0]))
 
-def graph_deriv(xs, us):
+def graph_deriv(xs, us, w):
     Ft = us[0] + us[1]
     vxdot = Ft * math.sin(xs[2]) / m
     vydot = (Ft * math.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
-    return xs[3], xs[4], xs[5], vxdot, vydot, wdot
+    noise = np.reshape(np.repeat(np.sqrt(xs[3]**2 + xs[4]**2), int(xs.shape[0])**2), (int(xs.shape[0]), int(xs.shape[0])))
+    return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + np.matmul(noise, w.T)
 
 def hist(x0, us, dt, tfinal, w): #for tensor
     t = 0.
@@ -69,7 +70,7 @@ def graph_hist(x0, us, dt, tfinal, w): #for plotting
     t += dt
     while t < tfinal:
         x = xhist[-1]
-        x = np.add(x, np.multiply(graph_deriv(x, us[i]), dt))
+        x = np.add(x, np.multiply(graph_deriv(x, us[i], w[1, i, :]), dt))
         i += 1
         t += dt
         thist = np.append(thist, np.array([t]), axis=0)
@@ -80,6 +81,7 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam, w):
     xg = tf.expand_dims(xg, 0)
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
+    w = tf.convert_to_tensor(w, tf.float32)
     xn, tn = hist(x0, u, dt, tfinal, w)
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
@@ -122,8 +124,8 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         u_out = np.random.multivariate_normal(mu, sigma, size = C).T
         #print(u_out.shape)
         J_out, costraw, constr = sess.run(J, feed_dict = {u: u_out})
-        '''print("J_out cost: ", np.mean(J_out))
-        print("J_out raw cost: ", np.mean(costraw))
+        print("J_out cost: ", np.mean(J_out))
+        '''print("J_out raw cost: ", np.mean(costraw))
         print("J_out constraint w/o lambda: ", np.mean(constr))'''
         u_out = np.reshape(u_out, [int(np.size(u0)/2), 2, C])
         J_out = np.repeat(J_out, np.size(u_out, 0), 0)
@@ -166,7 +168,7 @@ for o in range(0, 1):
 tstop = time.perf_counter()
 print(tstop - tstart, "sec.")
 us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
-xhist, thist = graph_hist(x0, us, dt, tfinal)
+xhist, thist = graph_hist(x0, us, dt, tfinal, w)
 
 os0 = np.array(sess.run(os0)) #obstacles
 
