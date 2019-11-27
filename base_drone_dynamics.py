@@ -14,14 +14,12 @@ L1 = 10
 C1 = 100
 p1 = .12
 
-x0 = np.array([1., 1., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
+x0 = np.array([5., 5., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
 u0 = (m*g / 2.) * np.ones((int(tfinal/dt), 2)) #thrust 1 and thrust 2
-R = .01 * tf.linalg.diag([1., 1.])
-Q = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
-Qf = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
-xg = tf.constant([1., 1., 0., 0., 0., 0.]) #goal position
-
-tstart = time.perf_counter()
+R = 0.01 * tf.linalg.diag([1., 1.])
+Q = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
+Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
+xg = tf.constant([2., 2., 0., 0., 0., 0.]) #goal position
 
 def deriv(xs, us):
     Ft = us[0] + us[1]
@@ -76,7 +74,7 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal):
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
 
-    Q, Qf, R = map(lambda x: tf.tile(tf.expand_dims(x, 0), [C1, 1, 1]), [Q, Qf, R])
+    Q, Qf, R = map(lambda x: tf.tile(tf.expand_dims(x, 0), [tf.shape(us)[1], 1, 1]), [Q, Qf, R])
 
     state_mul = tf.matrix_diag_part(tf.matmul(tf.matmul(u, R), tf.transpose(u, perm = [0, 2, 1])))
     
@@ -121,6 +119,7 @@ sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
 sigma0 = 10*np.diag(np.ones_like(ur0))
+tstart = time.perf_counter()
 
 cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal)
 
