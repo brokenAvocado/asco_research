@@ -10,7 +10,7 @@ l = 10. #length
 g = 9.81
 dt = 0.05
 tfinal = 10.
-L1 = 50
+L1 = 10
 C1 = 100
 p1 = .12
 
@@ -25,7 +25,6 @@ os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
 w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = C1) #noise
 w = np.reshape(w, (C1, int(tfinal/dt), x0.shape[0]))
-print(w.shape)
 tstart = time.perf_counter()
 
 def deriv(xs, us, w):
@@ -34,10 +33,15 @@ def deriv(xs, us, w):
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
     noiseFx = tf.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
-    noise = tf.cast(tf.reshape(tf.tile(noiseFx, [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0]))), tf.float32)
+    #noise = tf.reshape(tf.tile(noiseFx, [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0])))
+    noise_shape = [int(xs.shape[0]), int(xs.shape[0])]
+    noiseFx_shape = [int(int(xs.shape[0])/2), int(int(xs.shape[0])/2)]
+    noise_zeros = tf.zeros(noiseFx_shape)
+    noise = tf.concat([noise_zeros, noise_zeros, tf.reshape(tf.tile(noiseFx,[int(int(xs.shape[0])/2)**2]), [noiseFx_shape]), noise_zeros], 0)
+    print(noise.shape)
     return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.reshape(tf.matmul(noise, tf.transpose(tf.expand_dims(w, 1), perm = [0, 2, 1])), (int(xs.shape[0]), w.shape[0]))
 
-def graph_deriv(xs, us, w):
+'''def graph_deriv(xs, us, w):
     Ft = us[0] + us[1]
     vxdot = Ft * math.sin(xs[2]) / m
     vydot = (Ft * math.cos(xs[2]) / m) - g
@@ -45,17 +49,17 @@ def graph_deriv(xs, us, w):
     noiseFx = np.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
     noise = np.reshape(np.repeat(noiseFx ,int(xs.shape[0])**2), (int(xs.shape[0]), int(xs.shape[0])))
     return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + np.matmul(noise, w.T)
-
+'''
 def hist(x0, us, dt, tfinal, w): #for tensor
     t = 0.
     i = 0
-    xhist = tf.cast(tf.tile(tf.expand_dims(tf.expand_dims(x0, 0), 2), [1, 1, tf.shape(us)[2]]), tf.float32)
+    xhist = tf.tile(tf.expand_dims(tf.expand_dims(x0, 0), 2), [1, 1, tf.shape(us)[2]])
     print(xhist.shape)
     thist = tf.constant([t], dtype = tf.float64)
     t += dt
     while t < tfinal:
         x = xhist[-1, :, :]
-        x += tf.stack(deriv(x, us[i, :, :], w[:, i, :]), 0) * dt 
+        x += tf.stack(deriv(x, us[i, :, :], w[:, i, :]), 0) * dt
         i += 1
         t += dt
         thist = tf.concat([thist, [t]], 0)
@@ -63,7 +67,7 @@ def hist(x0, us, dt, tfinal, w): #for tensor
         xhist = tf.concat([xhist, x], 0)
     return xhist, thist
 
-def graph_hist(x0, us, dt, tfinal, w): #for plotting
+'''def graph_hist(x0, us, dt, tfinal, w): #for plotting
     t = 0.
     i = 0
     thist = np.array([t]) #records time in respect to dt
@@ -77,12 +81,13 @@ def graph_hist(x0, us, dt, tfinal, w): #for plotting
         thist = np.append(thist, np.array([t]), axis=0)
         xhist = np.append(xhist, np.array([x]), axis=0)
     return xhist, thist
-
+'''
 def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam, w): 
     xg = tf.expand_dims(xg, 0)
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
     w = tf.convert_to_tensor(w, tf.float32)
+    x0 = tf.cast(x0, tf.float32)
     xn, tn = hist(x0, u, dt, tfinal, w)
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
     xn = tf.transpose(xn, perm = [2, 0, 1])
@@ -168,8 +173,12 @@ for o in range(0, 10):
 
 tstop = time.perf_counter()
 print(tstop - tstart, "sec.")
-us = np.reshape(mu, [int(mu.size/2), 2]) #change back to mu
-xhist, thist = graph_hist(x0, us, dt, tfinal, w)
+us = np.reshape(mu, [int(mu.size/2), 2])
+
+usgraph = tf.reshape(mu, [int(mu.size/2), 2, 1]) #change back to mu
+x0 = tf.cast(x0, tf.float64)
+wfinal = np.mean(w, 0, keepdims = True)
+xhist, thist = sess.run(hist(x0, usgraph, dt, tfinal, wfinal))
 
 os0 = np.array(sess.run(os0)) #obstacles
 
