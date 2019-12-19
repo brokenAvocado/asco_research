@@ -23,8 +23,6 @@ xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 
 os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
-w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = C1) #noise
-w = np.reshape(w, (C1, int(tfinal/dt), x0.shape[0]))
 tstart = time.perf_counter()
 
 def deriv(xs, us, w):
@@ -32,14 +30,18 @@ def deriv(xs, us, w):
     vxdot = Ft * tf.sin(xs[2]) / m
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
+
+    print("xs: ", xs.shape)
     noiseFx = tf.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
     #noise = tf.reshape(tf.tile(noiseFx, [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0])))
-    noise_shape = [int(xs.shape[0]), int(xs.shape[0])]
-    noiseFx_shape = [int(int(xs.shape[0])/2), int(int(xs.shape[0])/2)]
+    noise_shape = tf.shape(us)[1], int(xs.shape[0]), int(xs.shape[0])
+    noiseFx_shape = tf.shape(us)[1], int(int(xs.shape[0])/2), int(int(xs.shape[0])/2)
+    
     noise_zeros = tf.zeros(noiseFx_shape)
-    noise = tf.concat([noise_zeros, noise_zeros, tf.reshape(tf.tile(noiseFx,[int(int(xs.shape[0])/2)**2]), [noiseFx_shape]), noise_zeros], 0)
-    print(noise.shape)
-    return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.reshape(tf.matmul(noise, tf.transpose(tf.expand_dims(w, 1), perm = [0, 2, 1])), (int(xs.shape[0]), w.shape[0]))
+    print(noise_zeros)
+    noise = tf.concat([noise_zeros, noise_zeros, tf.reshape(tf.tile(noiseFx,[int(int(xs.shape[0])/2)**2]), noiseFx_shape), noise_zeros], 0)
+    noise = tf.reshape(noise, noise_shape)
+    return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.transpose(tf.matmul(tf.expand_dims(w, 1), noise), perm = [1, 2, 0])
 
 '''def graph_deriv(xs, us, w):
     Ft = us[0] + us[1]
@@ -59,7 +61,7 @@ def hist(x0, us, dt, tfinal, w): #for tensor
     t += dt
     while t < tfinal:
         x = xhist[-1, :, :]
-        x += tf.stack(deriv(x, us[i, :, :], w[:, i, :]), 0) * dt
+        x += tf.stack(deriv(x, us[i, :, :], w[i, :]), 1) * dt
         i += 1
         t += dt
         thist = tf.concat([thist, [t]], 0)
@@ -158,6 +160,8 @@ ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
 #xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
 sigma0 = 10*np.diag(np.ones_like(ur0))
+w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = u.shape[1]) #noise
+w = np.reshape(w, (u.shape[1], int(tfinal/dt), x0.shape[0]))
 
 lam0 = 10.0
 lam = tf.Variable(lam0)
