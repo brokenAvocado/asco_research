@@ -11,18 +11,22 @@ g = 9.81
 dt = 0.05
 tfinal = 10.
 L1 = 10
-C1 = 100
+C1 = 1000
 p1 = .12
 
 x0 = np.array([10., 5., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
 u0 = (m*g / 2.) * np.ones((int(tfinal/dt), 2)) #thrust 1 and thrust 2
 R = .01 * tf.linalg.diag([1., 1.])
-Q = 0 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
+Q = tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 
 os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
+
+w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt))) #noise
+w = np.reshape(w, (int(tfinal/dt), x0.shape[0]))
+print(w.shape)
 tstart = time.perf_counter()
 
 def deriv(xs, us, w):
@@ -31,17 +35,17 @@ def deriv(xs, us, w):
     vydot = (Ft * tf.cos(xs[2]) / m) - g
     wdot = 2*(us[0]-us[1])/(m * l)
 
-    print("xs: ", xs.shape)
-    noiseFx = tf.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
-    #noise = tf.reshape(tf.tile(noiseFx, [int(xs.shape[0])*int(xs.shape[0])]), (w.shape[0], int(xs.shape[0]), int(xs.shape[0])))
     noise_shape = tf.shape(us)[1], int(xs.shape[0]), int(xs.shape[0])
     noiseFx_shape = tf.shape(us)[1], int(int(xs.shape[0])/2), int(int(xs.shape[0])/2)
-    
+
+    #noiseFx = tf.sqrt(xs[3]**2 + xs[4]**2)*.0001 #+ (us[0] + us[1])*.0001
+    zero = tf.zeros((tf.shape(us)[1], ))
+    noiseFx = tf.transpose([[0.1 * tf.cos(xs[2]), -tf.sin(xs[2]), zero], [0.1 * tf.sin(xs[2]), tf.cos(xs[2]), zero], [zero, zero, zero]], perm = [2, 0, 1])
+    #tf.cast(tf.reshape(tf.tile(noiseFx,[int(int(xs.shape[0])/2)**2]), noiseFx_shape), tf.float32) 
     noise_zeros = tf.zeros(noiseFx_shape)
-    print(noise_zeros)
-    noise = tf.concat([noise_zeros, noise_zeros, tf.reshape(tf.tile(noiseFx,[int(int(xs.shape[0])/2)**2]), noiseFx_shape), noise_zeros], 0)
+    noise = tf.concat([noise_zeros, noise_zeros, noise_zeros, noiseFx], 0)
     noise = tf.reshape(noise, noise_shape)
-    return [xs[3], xs[4], xs[5], vxdot, vydot, wdot] + tf.transpose(tf.matmul(tf.expand_dims(w, 1), noise), perm = [1, 2, 0])
+    return tf.cast([xs[3], xs[4], xs[5], vxdot, vydot, wdot], tf.float32) + tf.transpose(tf.matmul(tf.expand_dims(tf.cast(w, tf.float32), 1), noise), perm = [1, 2, 0])
 
 '''def graph_deriv(xs, us, w):
     Ft = us[0] + us[1]
@@ -56,16 +60,14 @@ def hist(x0, us, dt, tfinal, w): #for tensor
     t = 0.
     i = 0
     xhist = tf.tile(tf.expand_dims(tf.expand_dims(x0, 0), 2), [1, 1, tf.shape(us)[2]])
-    print(xhist.shape)
     thist = tf.constant([t], dtype = tf.float64)
     t += dt
     while t < tfinal:
         x = xhist[-1, :, :]
-        x += tf.stack(deriv(x, us[i, :, :], w[i, :]), 1) * dt
+        x += deriv(x, us[i, :, :], w[:, i, :]) * dt
         i += 1
         t += dt
         thist = tf.concat([thist, [t]], 0)
-        x = tf.expand_dims(x, 0)
         xhist = tf.concat([xhist, x], 0)
     return xhist, thist
 
@@ -89,6 +91,7 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam, w):
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
     w = tf.convert_to_tensor(w, tf.float32)
+    w = tf.tile(tf.expand_dims(w, 0), [tf.shape(us)[1], 1, 1])
     x0 = tf.cast(x0, tf.float32)
     xn, tn = hist(x0, u, dt, tfinal, w)
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
@@ -160,8 +163,6 @@ ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
 #xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
 sigma0 = 10*np.diag(np.ones_like(ur0))
-w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = u.shape[1]) #noise
-w = np.reshape(w, (u.shape[1], int(tfinal/dt), x0.shape[0]))
 
 lam0 = 10.0
 lam = tf.Variable(lam0)
@@ -179,9 +180,9 @@ tstop = time.perf_counter()
 print(tstop - tstart, "sec.")
 us = np.reshape(mu, [int(mu.size/2), 2])
 
-usgraph = tf.reshape(mu, [int(mu.size/2), 2, 1]) #change back to mu
-x0 = tf.cast(x0, tf.float64)
-wfinal = np.mean(w, 0, keepdims = True)
+usgraph = tf.cast(tf.reshape(mu, [int(mu.size/2), 2, 1]), tf.float32) #change back to mu
+x0 = tf.cast(x0, tf.float32)
+wfinal = np.expand_dims(w, 0)
 xhist, thist = sess.run(hist(x0, usgraph, dt, tfinal, wfinal))
 
 os0 = np.array(sess.run(os0)) #obstacles
