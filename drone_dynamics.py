@@ -24,9 +24,6 @@ xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 os0 = tf.constant([[6., -4.], [10., -1.], [3., -7.], [9., 3.]]) #obstacles
 r = 1 #radius
 
-w = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt))) #noise
-w = np.reshape(w, (int(tfinal/dt), x0.shape[0]))
-print(w.shape)
 tstart = time.perf_counter()
 
 def deriv(xs, us, w):
@@ -91,7 +88,6 @@ def quadratic_cost_for(x0, xg, us, Q, Qf, R, dt, tfinal, lam, w):
     u = tf.reshape(us, [int(int(us.shape[0])/2), 2, tf.shape(us)[1]]) #reintroduce the thrusts from vectorized
     u = tf.cast(u, tf.float32)
     w = tf.convert_to_tensor(w, tf.float32)
-    w = tf.tile(tf.expand_dims(w, 0), [tf.shape(us)[1], 1, 1])
     x0 = tf.cast(x0, tf.float32)
     xn, tn = hist(x0, u, dt, tfinal, w)
     u = tf.transpose(u, perm = [2, 0, 1]) #matmul does batch mult with batch size infront
@@ -134,9 +130,11 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
     for l in range(0, L):
         u_out = np.random.multivariate_normal(mu, sigma, size = C).T
         #print(u_out.shape)
-        J_out, costraw, constr = sess.run(J, feed_dict = {u: u_out})
+        noise = np.random.multivariate_normal(np.zeros(int(x0.shape[0] * tfinal/dt)), np.identity(int(x0.shape[0] * tfinal/dt)), size = C) #noise
+        noise = np.reshape(noise, (C, int(tfinal/dt), x0.shape[0]))
+        J_out, cost_raw, constr = sess.run(J, feed_dict = {u: u_out, w: noise})
         print("J_out cost: ", np.mean(J_out))
-        '''print("J_out raw cost: ", np.mean(costraw))
+        '''print("J_out raw cost: ", np.mean(cost_raw))
         print("J_out constraint w/o lambda: ", np.mean(constr))'''
         u_out = np.reshape(u_out, [int(np.size(u0)/2), 2, C])
         J_out = np.repeat(J_out, np.size(u_out, 0), 0)
@@ -145,12 +143,12 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         cost = cost[:, :, (cost[:, -1, :].argsort()[0])]
         cost = np.delete(cost, -1, 1)
 
-        e_samples = cost[:, :, :int(C*p)] #test this, might be wrong
+        e_samples = cost[:, :, :int(C*p)]
         #print("elite = ", e_samples.shape)
         mu = np.reshape(np.mean(e_samples, axis = 2), [-1])
         #J_out, costraw, constr = sess.run(J, feed_dict = {u: np.reshape(mu, [mu.size, 1])})
         '''print("mu cost: ", np.mean(J_out))
-        print("mu raw cost: ", np.mean(costraw))
+        print("mu raw cost: ", np.mean(cost_raw))
         print("mu constraint w/o lambda: ", np.mean(constr))'''
         e_samples = np.reshape(e_samples, (np.size(e_samples, axis = 0) * np.size(e_samples, axis = 1), np.size(e_samples, axis = 2)))
         #print(e_samples.shape)
@@ -162,6 +160,7 @@ sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
 u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
 #xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
+w = tf.placeholder(tf.float32, shape = (None, int(tfinal/dt), x0.shape[0]))
 sigma0 = 10*np.diag(np.ones_like(ur0))
 
 lam0 = 10.0
@@ -182,7 +181,8 @@ us = np.reshape(mu, [int(mu.size/2), 2])
 
 usgraph = tf.cast(tf.reshape(mu, [int(mu.size/2), 2, 1]), tf.float32) #change back to mu
 x0 = tf.cast(x0, tf.float32)
-wfinal = np.expand_dims(w, 0)
+noise = np.random.multivariate_normal(np.zeros(int(x0.shape[0]) * int(tfinal/dt)), np.identity(int(x0.shape[0]) * int(tfinal/dt))) #noise
+wfinal = np.reshape(noise, (1, int(tfinal/dt), x0.shape[0]))
 xhist, thist = sess.run(hist(x0, usgraph, dt, tfinal, wfinal))
 
 os0 = np.array(sess.run(os0)) #obstacles
