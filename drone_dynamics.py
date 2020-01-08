@@ -142,7 +142,8 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         cost = np.array(np.append(u_out, J_out, 1))
         cost = cost[:, :, (cost[:, -1, :].argsort()[0])]
         cost = np.delete(cost, -1, 1)
-
+        
+        a_samples = cost
         e_samples = cost[:, :, :int(C*p)]
         #print("elite = ", e_samples.shape)
         mu = np.reshape(np.mean(e_samples, axis = 2), [-1])
@@ -154,11 +155,11 @@ def CEM(sess, u0, J, E0, L, C, p): #L is the maximum iterations done and C is sa
         #print(e_samples.shape)
         sigma = np.cov(e_samples) + 0.01 * np.diag(np.ones_like(mu)) 
         #print(sigma.shape)
-    return mu, sigma
+    return mu, sigma, e_samples
     
 sess = tf.Session()
 ur0 = np.reshape(u0, [-1])
-u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) #change to none
+u = tf.placeholder(tf.float32, shape = (ur0.shape[0], None)) 
 #xs = tf.placeholder(tf.float32, shape = (ur0.shape[0]/2, 2, C1))
 w = tf.placeholder(tf.float32, shape = (None, int(tfinal/dt), x0.shape[0]))
 sigma0 = 10*np.diag(np.ones_like(ur0))
@@ -170,20 +171,22 @@ cost = quadratic_cost_for(x0, xg, u, Q, Qf, R, dt, tfinal, lam, w)
 for o in range(0, 10):
     sess.run(lam.assign(10.0**o))
     print("lambda: ", sess.run(lam))
-    mu, sigma = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
+    mu, sigma, samples = CEM(sess, ur0, cost, sigma0, L1, C1, p1)
     ur0 = np.reshape(mu, [-1])
     sigma0 = sigma
     print()
 
 tstop = time.perf_counter()
 print(tstop - tstart, "sec.")
-us = np.reshape(mu, [int(mu.size/2), 2])
+us = np.reshape(samples, [int(mu.size/2), 2, int(samples.shape[1])]) #np.reshape(mu, [int(mu.size/2), 2]) for mean samples
 
-usgraph = tf.cast(tf.reshape(mu, [int(mu.size/2), 2, 1]), tf.float32) #change back to mu
+usgraph = tf.cast(us, tf.float32) #tf.reshape(mu, [int(mu.size/2), 2, 1]), tf.float32)
 x0 = tf.cast(x0, tf.float32)
-noise = np.random.multivariate_normal(np.zeros(int(x0.shape[0]) * int(tfinal/dt)), np.identity(int(x0.shape[0]) * int(tfinal/dt))) #noise
-wfinal = np.reshape(noise, (1, int(tfinal/dt), x0.shape[0]))
+noise = np.random.multivariate_normal(np.zeros(int(x0.shape[0]) * int(tfinal/dt)), np.identity(int(x0.shape[0]) * int(tfinal/dt)), size = int(C1*p1)) #noise
+wfinal = np.reshape(noise, (int(C1*p1), int(tfinal/dt), x0.shape[0]))
 xhist, thist = sess.run(hist(x0, usgraph, dt, tfinal, wfinal))
+print("xhist: ", xhist.shape)
+print("thist: ", thist.shape)
 
 os0 = np.array(sess.run(os0)) #obstacles
 
@@ -191,7 +194,7 @@ plt.figure()
 plt.xlabel('X')
 plt.ylabel('Y')
 plt.title('Position')
-plt.plot(xhist[:, 0], xhist[:, 1]) #position graph
+plt.plot(xhist[:, 0, :], xhist[:, 1, :]) #position graph
 ax = plt.gca()
 for f in range(0, int(os0.shape[0])):
     ax.add_patch(plt.Circle(os0[f], r, color = 'r'))
@@ -201,12 +204,12 @@ plt.xlabel('Time')
 plt.ylabel('Velocity')
 plt.title('Velocity over Time')
 #plt.plot(thist[:], (np.sqrt(xhist[:, 3]**2 + xhist[:, 4]**2))) #velocity graph
-plt.plot(thist[:], xhist[:, 4])
+plt.plot(thist[:], xhist[:, 4, :])
 
 plt.figure()
 plt.xlabel('Time')
 plt.ylabel('Thrust')
 plt.title('Thrust over Time')
-plt.plot(thist[:], us[:, 0]) #thrust 1
-plt.plot(thist[:], us[:, 1]) #thrust 2
+plt.plot(thist[:], us[:, 0, :]) #thrust 1
+plt.plot(thist[:], us[:, 1, :]) #thrust 2
 plt.show()
