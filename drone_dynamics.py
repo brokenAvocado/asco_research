@@ -17,7 +17,7 @@ p1 = .12
 x0 = np.array([10., 5., 0., 0., 0., 0.]) #posx, posy, angle, velox, veloy, angVel
 u0 = (m*g / 2.) * np.ones((int(tfinal/dt), 2)) #thrust 1 and thrust 2
 R = .01 * tf.linalg.diag([1., 1.])
-Q = tf.linalg.diag([1., 1., 1., 1., 1., 1.])
+Q = .1 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 Qf = 10 * tf.linalg.diag([1., 1., 1., 1., 1., 1.])
 xg = tf.constant([3., -9., 0., 0., 0., 0.]) #goal position
 
