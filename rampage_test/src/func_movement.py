@@ -5,7 +5,7 @@ from nav_msgs.msg import *
 from geometry_msgs.msg import *
 from rampage_msgs.msg import *
  
-#purpose of this program is to move rampage based on a parametric function, so we can test the steer and velocity commands
+#purpose of this program is to move rampage based on a parametric function, so we can test the steer and velocity
 class TestMove:
 
     def __init__(self):
